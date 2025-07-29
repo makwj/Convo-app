@@ -9,6 +9,10 @@ import {
   deleteDoc,
   collection,
   getDocs,
+  arrayUnion,
+  arrayRemove,
+  query,
+  where,
 } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -46,8 +50,20 @@ export default function ClientEventPage({
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [inviteSearch, setInviteSearch] = useState("");
+  const [cohosts, setCohosts] = useState(event.cohosts || []);
+  const [cohostSearch, setCohostSearch] = useState("");
+  const [showCohostModal, setShowCohostModal] = useState(false);
   const remainingSlots = Number(event.capacity) - attendees.length;
   const isCreator = user?.uid === event.createdBy?.uid;
+  const isCohost = cohosts.some((c: any) => c.uid === user?.uid);
+  const canManage = isCreator || isCohost;
+
+  const filteredCohostUsers = allUsers.filter(
+    (u) =>
+      u.email.toLowerCase().includes(cohostSearch.toLowerCase()) &&
+      u.uid !== user?.uid &&
+      !cohosts.some((c: any) => c.uid === u.uid)
+  );
 
   const handleDeleteEvent = async () => {
     const confirmed = window.confirm(
@@ -58,7 +74,7 @@ export default function ClientEventPage({
     try {
       await deleteDoc(doc(db, "events", eventId));
       toast.success("Event deleted successfully.");
-      router.push("/your-event");
+      router.push("/your-events");
     } catch (error) {
       toast.error("Failed to delete event.");
       console.error("Delete failed:", error);
@@ -75,7 +91,7 @@ export default function ClientEventPage({
   useEffect(() => {
     const fetchUsers = async () => {
       const snapshot = await getDocs(collection(db, "users"));
-      setAllUsers(snapshot.docs.map((doc) => doc.data()));
+      setAllUsers(snapshot.docs.map((doc) => ({ ...doc.data(), uid: doc.id })));
     };
     fetchUsers();
   }, []);
@@ -83,6 +99,55 @@ export default function ClientEventPage({
   const updateEventField = async (updatedFields: any) => {
     const eventRef = doc(db, "events", eventId);
     await updateDoc(eventRef, updatedFields);
+  };
+
+  const handleInviteCohost = async (u: any) => {
+    const cohostInfo = {
+      uid: u.uid,
+      email: u.email,
+      username: u.username || u.email.split("@")[0],
+    };
+
+    if (cohosts.some((c: any) => c.uid === cohostInfo.uid)) {
+      toast.error("User is already a co-host.");
+      return;
+    }
+
+    try {
+      const eventRef = doc(db, "events", eventId);
+      await updateDoc(eventRef, {
+        cohosts: arrayUnion(cohostInfo),
+      });
+
+      setCohosts((prev) => [...prev, cohostInfo]);
+      toast.success("Co-host invited!");
+      setShowCohostModal(false);
+    } catch (err) {
+      console.error("Error inviting co-host:", err);
+      toast.error("Failed to invite co-host.");
+    }
+  };
+
+  const handleRemoveCohost = async (cohost: any) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to remove ${
+        cohost.username || cohost.email?.split("@")[0]
+      } as a co-host?`
+    );
+    if (!confirmed) return;
+
+    try {
+      const eventRef = doc(db, "events", eventId);
+      await updateDoc(eventRef, {
+        cohosts: arrayRemove(cohost),
+      });
+
+      setCohosts((prev) => prev.filter((c: any) => c.uid !== cohost.uid));
+      toast.success("Co-host removed.");
+    } catch (err) {
+      console.error("Error removing co-host:", err);
+      toast.error("Failed to remove co-host.");
+    }
   };
 
   const handleInviteUser = async (userToInvite: any) => {
@@ -205,7 +270,7 @@ export default function ClientEventPage({
     <>
       <Navbar />
 
-      {isCreator && (
+      {canManage && (
         <Dialog open={showInviteModal} onOpenChange={setShowInviteModal}>
           <DialogTrigger asChild>
             <button
@@ -256,7 +321,7 @@ export default function ClientEventPage({
       )}
 
       <main className="relative max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-8 bg-white rounded-xl shadow-md mt-8 border">
-        {isCreator && (
+        {canManage && (
           <button
             onClick={handleEdit}
             title="Edit Event"
@@ -276,6 +341,56 @@ export default function ClientEventPage({
 
         <div className="space-y-4">
           <h1 className="text-3xl font-bold text-indigo-700">{event.title}</h1>
+          {isCreator && (
+            <Dialog open={showCohostModal} onOpenChange={setShowCohostModal}>
+              <DialogTrigger asChild>
+                <button
+                  onClick={() => setShowCohostModal(true)}
+                  className="cursor-pointer mt-4 flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                >
+                  <UserPlus className="w-4 h-4" /> Invite Co-Host
+                </button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogTitle>Invite Co-Host</DialogTitle>
+                <input
+                  type="text"
+                  placeholder="Search by email..."
+                  value={cohostSearch}
+                  onChange={(e) => setCohostSearch(e.target.value)}
+                  className="w-full px-4 py-2 mt-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <div className="mt-4 max-h-64 overflow-y-auto">
+                  {filteredCohostUsers.length > 0 ? (
+                    <ul className="space-y-2">
+                      {filteredCohostUsers.map((u) => (
+                        <li
+                          key={u.uid}
+                          className="flex justify-between items-center border-b pb-2"
+                        >
+                          <div>
+                            <p className="font-medium">
+                              {u.username || u.email?.split("@")[0]}
+                            </p>
+                            <p className="text-sm text-gray-600">{u.email}</p>
+                          </div>
+                          <button
+                            onClick={() => handleInviteCohost(u)}
+                            className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm cursor-pointer transition"
+                          >
+                            Invite
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-gray-500">No users found.</p>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+
           <p className="flex items-center text-gray-600">
             <Calendar className="w-4 h-4 mr-1" /> {formattedDate}
           </p>
@@ -293,6 +408,12 @@ export default function ClientEventPage({
           <p className="text-sm font-medium text-green-700 bg-green-100 px-3 py-1 rounded inline-block">
             Host: {hostDisplay}
           </p>
+          {cohosts.length > 0 && (
+            <p className="text-sm font-medium text-blue-700 bg-blue-100 px-3 py-1 rounded inline-block mt-2">
+              Co-hosts:{" "}
+              {cohosts.map((c: any) => c.username || c.email).join(", ")}
+            </p>
+          )}
           <p className="text-gray-700 flex items-center">
             <Users className="w-4 h-4 mr-1" />
             Capacity: {event.capacity}
@@ -306,6 +427,7 @@ export default function ClientEventPage({
             </p>
           )}
           {!isCreator &&
+            !isCohost &&
             (hasJoined ? (
               <div className="flex items-center gap-4">
                 <button
@@ -337,7 +459,7 @@ export default function ClientEventPage({
               </button>
             ))}
 
-          {isCreator && status !== "completed" && (
+          {canManage && status !== "completed" && (
             <>
               <button
                 onClick={handleMarkAsCompleted}
@@ -345,16 +467,68 @@ export default function ClientEventPage({
               >
                 Mark as Completed
               </button>
-              <button
-                onClick={handleDeleteEvent}
-                className="ml-2 text-sm text-white bg-red-600 px-4 py-2 rounded-md mt-2 hover:bg-red-700 cursor-pointer"
-              >
-                Delete Event
-              </button>
+              {isCreator && (
+                <button
+                  onClick={handleDeleteEvent}
+                  className="ml-2 text-sm text-white bg-red-600 px-4 py-2 rounded-md mt-2 hover:bg-red-700 cursor-pointer"
+                >
+                  Delete Event
+                </button>
+              )}
             </>
           )}
         </div>
       </main>
+
+      <section className="max-w-6xl mx-auto p-6 mt-8 bg-white rounded-xl shadow-md border">
+        <h2 className="text-2xl font-semibold mb-4 text-indigo-700">
+          Host and Co-hosts
+        </h2>
+        <ul className="space-y-2">
+          <li className="flex items-center justify-between text-gray-700 border-b py-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <span className="font-medium">
+                {event.createdBy?.username ||
+                  event.createdBy?.email?.split("@")[0]}
+                {isCreator && " (You)"}
+              </span>
+              <span className="text-sm bg-green-100 text-black px-2 py-1 rounded">
+                {event.createdBy?.email}
+              </span>
+            </div>
+            <span className="text-sm text-green-700 font-medium">Host</span>
+          </li>
+          {cohosts.map((c: any, i: number) => (
+            <li
+              key={i}
+              className="flex items-center justify-between text-gray-700 border-b py-2"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <span className="font-medium">
+                  {c.username || c.email?.split("@")[0]}
+                  {c.uid === user?.uid && " (You)"}
+                </span>
+                <span className="text-sm bg-blue-100 text-black px-2 py-1 rounded">
+                  {c.email}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-blue-700 font-medium">
+                  Co-host
+                </span>
+                {isCreator && (
+                  <button
+                    onClick={() => handleRemoveCohost(c)}
+                    className="text-sm px-2 py-1 rounded-md border text-red-600 hover:bg-red-100 cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <section className="max-w-6xl mx-auto p-6 mt-8 bg-white rounded-xl shadow-md border">
         <h2 className="text-2xl font-semibold mb-4 text-indigo-700">
@@ -371,7 +545,7 @@ export default function ClientEventPage({
               >
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                   <span className="font-medium">
-                    {a.uid === user?.uid && isCreator
+                    {a.uid === user?.uid && canManage
                       ? "You"
                       : a.username || a.email?.split("@")[0]}
                   </span>
@@ -379,7 +553,7 @@ export default function ClientEventPage({
                     {a.email}
                   </span>
                 </div>
-                {isCreator && (
+                {canManage && (
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleToggleAttendance(a.uid)}

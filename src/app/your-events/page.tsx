@@ -22,7 +22,7 @@ export default function Activity() {
   const [userEvents, setUserEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<
-    "all" | "created" | "joined" | "completed"
+    "all" | "created" | "joined" | "completed" | "cohosted"
   >("all");
 
   const router = useRouter();
@@ -67,7 +67,8 @@ export default function Activity() {
         const filtered = eventsWithCreators.filter(
           (event: any) =>
             event.createdBy?.uid === user?.uid ||
-            event.attendees?.some((a: any) => a.uid === user?.uid)
+            event.attendees?.some((a: any) => a.uid === user?.uid) ||
+            event.cohosts?.some((c: any) => c.uid === user?.uid)
         );
 
         setUserEvents(filtered);
@@ -82,12 +83,15 @@ export default function Activity() {
   }, [user]);
 
   const visibleEvents = userEvents.filter((event) => {
-    if (filterType === "created") return event.createdBy?.uid === user?.uid;
+    const isCreator = event.createdBy?.uid === user?.uid;
+    const isCoHost = event.cohosts?.some((c: any) => c.uid === user?.uid);
+    const isAttendee = event.attendees?.some((a: any) => a.uid === user?.uid);
+
+    if (filterType === "created") return isCreator || isCoHost;
+    if (filterType === "cohosted") return isCoHost && !isCreator;
     if (filterType === "joined")
       return (
-        event.status !== "completed" &&
-        event.attendees?.some((a: any) => a.uid === user?.uid) &&
-        event.createdBy?.uid !== user?.uid
+        event.status !== "completed" && isAttendee && !isCreator && !isCoHost
       );
     if (filterType === "completed") return event.status === "completed";
     return true;
@@ -112,7 +116,6 @@ export default function Activity() {
           >
             All
           </button>
-
           <button
             onClick={() => setFilterType("created")}
             className={`px-4 py-2 rounded-md font-medium transition-colors ${
@@ -123,7 +126,16 @@ export default function Activity() {
           >
             Created
           </button>
-
+          <button
+            onClick={() => setFilterType("cohosted")}
+            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+              filterType === "cohosted"
+                ? "bg-indigo-600 text-white"
+                : "border border-indigo-600 text-indigo-600 hover:bg-indigo-50 cursor-pointer"
+            }`}
+          >
+            Co-hosted
+          </button>
           <button
             onClick={() => setFilterType("joined")}
             className={`px-4 py-2 rounded-md font-medium transition-colors ${
@@ -134,7 +146,6 @@ export default function Activity() {
           >
             Joined
           </button>
-
           <button
             onClick={() => setFilterType("completed")}
             className={`px-4 py-2 rounded-md font-medium transition-colors ${
@@ -167,6 +178,11 @@ export default function Activity() {
                 month: "long",
                 year: "numeric",
               })}, ${rawDate.toLocaleDateString("en-GB", { weekday: "long" })}`;
+
+              const isCreator = event.createdBy?.uid === user?.uid;
+              const isCoHost = event.cohosts?.some(
+                (c: any) => c.uid === user?.uid
+              );
 
               return (
                 <div
@@ -218,6 +234,11 @@ export default function Activity() {
                               "Unknown"}
                           </span>
                         </p>
+                        {isCoHost && !isCreator && (
+                          <div className="w-fit bg-blue-300 text-blue-700 text-xs font-semibold px-2 py-1 rounded">
+                            Co-hosted
+                          </div>
+                        )}
 
                         <div className="pt-2">
                           <Button

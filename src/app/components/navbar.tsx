@@ -16,7 +16,7 @@ export default function Navbar() {
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      router.push("/login");
+      router.push("/");
       toast("You have been logged out", { duration: 5000 });
     } catch (error) {
       console.error("Error signing out:", error);

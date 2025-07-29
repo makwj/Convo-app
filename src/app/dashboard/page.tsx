@@ -31,6 +31,7 @@ export default function Dashboard() {
   const [createdEvents, setCreatedEvents] = useState<any[]>([]);
   const [attendedEvents, setAttendedEvents] = useState<any[]>([]);
   const [invitedEvents, setInvitedEvents] = useState<any[]>([]);
+  const [cohostedEvents, setCohostedEvents] = useState<any[]>([]);
   const [upcomingEvent, setUpcomingEvent] = useState<any | null>(null);
   const router = useRouter();
 
@@ -51,6 +52,7 @@ export default function Dashboard() {
         const created: any[] = [];
         const attended: any[] = [];
         const invited: any[] = [];
+        const cohosted: any[] = [];
 
         for (const docSnap of snapshot.docs) {
           const data = docSnap.data();
@@ -80,13 +82,21 @@ export default function Dashboard() {
           ) {
             invited.push(event);
           }
+
+          if (
+            Array.isArray(data.cohosts) &&
+            data.cohosts.some((c: any) => c.uid === user.uid)
+          ) {
+            cohosted.push(event);
+          }
         }
 
         setCreatedEvents(created);
         setAttendedEvents(attended);
         setInvitedEvents(invited);
+        setCohostedEvents(cohosted);
 
-        const allUpcoming = [...created, ...attended]
+        const allUpcoming = [...created, ...attended, ...cohosted]
           .filter((e) => e.status !== "completed")
           .sort((a, b) => {
             const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
@@ -132,6 +142,12 @@ export default function Dashboard() {
       return (
         <span className="ml-2 bg-indigo-100 text-indigo-800 text-xs px-2 py-0.5 rounded-full">
           Hosting
+        </span>
+      );
+    } else if (event.cohosts?.some((c: any) => c.uid === user.uid)) {
+      return (
+        <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full">
+          Co-hosting
         </span>
       );
     } else if (event.attendees?.some((a: any) => a.uid === user.uid)) {
@@ -251,19 +267,19 @@ export default function Dashboard() {
                     <h3 className="text-lg font-bold text-indigo-600 mb-2">
                       {event.title}
                     </h3>
-                    <div className="text-sm text-gray-500 flex items-center bg-gray-50 p-2 rounded-md w-fit p-2 mb-1">
+                    <div className="text-sm text-gray-500 flex items-center bg-gray-50 p-2 rounded-md w-fit mb-1">
                       <Calendar className="inline w-4 h-4 mr-1" />
                       {formatFullDate(
                         event.date?.toDate?.() || new Date(event.date)
                       )}
                     </div>
 
-                    <div className="text-sm text-gray-500 flex items-center bg-gray-50 p-2 rounded-md w-fit p-2 mb-1">
+                    <div className="text-sm text-gray-500 flex items-center bg-gray-50 p-2 rounded-md w-fit mb-1">
                       <Clock className="inline w-4 h-4 mr-1" />
                       {event.startTime} - {event.endTime}
                     </div>
 
-                    <div className="text-sm text-gray-500 flex items-center bg-gray-50 p-2 rounded-md w-fit p-2 mb-1">
+                    <div className="text-sm text-gray-500 flex items-center bg-gray-50 p-2 rounded-md w-fit mb-1">
                       <MapPin className="w-4 h-4 mr-1" />
                       {event.location}
                     </div>
@@ -304,6 +320,10 @@ export default function Dashboard() {
           <div className="bg-white p-4 rounded-lg shadow text-center">
             <p className="text-2xl font-bold">{createdEvents.length}</p>
             <p className="text-sm text-gray-500">Events Created</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow text-center">
+            <p className="text-2xl font-bold">{cohostedEvents.length}</p>
+            <p className="text-sm text-gray-500">Events Co-hosted</p>
           </div>
           <div className="bg-white p-4 rounded-lg shadow text-center">
             <p className="text-2xl font-bold">{attendedEvents.length}</p>
